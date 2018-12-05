@@ -139,6 +139,8 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
 
   baseBrowserDecorator(this);
 
+  self.name = name;
+
   // This is done by passing the option on the url, in response the Karma server will
   // set the following meta in the page.
   //   <meta http-equiv="X-UA-Compatible" content="[VALUE]"/>
