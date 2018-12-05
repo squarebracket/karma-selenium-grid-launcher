@@ -1,0 +1,43 @@
+{
+  "name": "karma-selenium-grid-launcher",
+  "version": "0.1.0",
+  "description": "Launcher for Remote WebDriver instances on a Selenium Grid; forked from karma-webdriver-launcher.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/squarebracket/karma-selenium-grid-launcher.git"
+  },
+  "keywords": [
+    "karma-plugin",
+    "karma-launcher",
+    "launcher",
+    "WebDriver",
+    "Selenium"
+  ],
+  "author": "Chuck Wilson <chuck.wilson@gmail.com>",
+  "contributors": [
+    "Mark Ethan Trostler <mark@zzo.com>",
+    "Alan Parkinson <alan.parkson@hindsightsoftware.co.uk>",
+    "Matthew Smith <mtscout6@gmail.com>",
+    "Mark Trostler <mark@zzo.com>",
+    "Anton Usmansky <cody0@yandex-team.ru>",
+    "Jack Bastow <jack.bastow@hindsightsoftware.co.uk>",
+    "Philipp Zins <philipp.zins@mercateo.com>",
+    "Dr. Kibitz <info@drkibitz.com>",
+    "Charlie Dowler <charlie.dowler@hindsightsoftware.co.uk>",
+    "Sergey Belov <peimei@ya.ru>",
+    "Vladimir Alaev <scff@yandex-team.ru>",
+    "Vojta Jina <vojta.jina@gmail.com>",
+    "j0tunn <anton.usmansky@gmail.com>",
+    "Jaroslav Hejral <jaroslav.hejral@hp.com>",
+    "persidskiy <persidskiy@yandex-team.ru>",
+    "Enrique Paredes <enrique@iknite.com>"
+  ],
+  "dependencies": {
+    "selenium-webdriver": "^4.0.0-alpha.1"
+  },
+  "license": "MIT"
+}
