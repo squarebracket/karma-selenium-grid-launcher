@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Unreleased
+### Added
+- Send and then close alert to non-Safari browsers to try to avoid focus problems
+
 ### Changed
 - Error out after a certain number of heartbeat errors
 

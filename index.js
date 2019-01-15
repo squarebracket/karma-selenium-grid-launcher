@@ -7,6 +7,7 @@ var edge = require('selenium-webdriver/edge');
 var firefox = require('selenium-webdriver/firefox');
 var ie = require('selenium-webdriver/ie');
 var safari = require('selenium-webdriver/safari');
+var until = wd.until;
 
 const ignoreArgs = ['base', 'gridUrl', 'suppressWarning', 'x-ua-compatible',
   'heartbeatInterval'];
@@ -201,6 +202,24 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
         .get(url)
         .then(() => {
           log.debug(self.name + ' started');
+          if (args.browserName !== 'safari') {
+            var windowRef = self.browser.getWindowHandle();
+            self.browser.switchTo().frame(0);
+            var query = self.browser.wait(until.elementLocated(wd.By.id('player')))
+              .then(() => {
+                log.debug('Trying to focus ' + self.name + ' with an alert...');
+                self.browser.switchTo().frame(null);
+                self.browser.switchTo().window(windowRef).then(() => {
+                  self.browser.executeScript("alert('test')").then(() => {
+                    self.browser.switchTo().alert().then((alert) => {
+                      alert.dismiss();
+                      self.browser.switchTo().window(windowRef);
+                    });
+                  });
+                });
+              })
+              .catch(() => log.error('caught'));
+          }
         })
         .catch((err) => {
           log.error(self.name + ' was unable to start: ' + err);
