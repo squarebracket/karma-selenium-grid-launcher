@@ -171,12 +171,29 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
       .withCapabilities(capabilities)
       .build();
 
+    var heartbeatErrors = 0;
     var heartbeat = args.heartbeatInterval && setInterval(function() {
       log.debug('hearbeat for ' + self.name);
       self.browser.getTitle()
         .catch((err) => {
+          heartbeatErrors++;
           log.error('Caught error for browser ' + self.name + ' during ' +
             'heartbeat: ' + err);
+          if (heartbeatErrors >= 5) {
+            log.error('Too many heartbeat errors, attempting to stop ' + self.name);
+            args.heartbeatInterval && clearInterval(heartbeat);
+            self.browser.quit()
+              .then(() => {
+                log.info('Killed ' + self.name + '.');
+                self._done();
+                self._onProcessExit(self.error ? -1 : 0, self.error);
+              })
+              .catch(() => {
+                log.info('Error stopping browser ' + self.name);
+                self._done();
+                self._onProcessExit(self.error ? -1 : 0, self.error);
+              });
+          }
         });
     }, args.heartbeatInterval);
 
