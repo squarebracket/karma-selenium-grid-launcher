@@ -1,6 +1,6 @@
 {
   "name": "karma-selenium-grid-launcher",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Launcher for Remote WebDriver instances on a Selenium Grid; forked from karma-webdriver-launcher.",
   "main": "index.js",
   "scripts": {
