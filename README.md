@@ -110,6 +110,11 @@ Object mapping a method name for the appropriate `Options` object of the
 browser to the value with which it should be called. See the
 [selenium-webdriver API docs] for more information.
 
+### promptOn
+
+Send and then close a prompt when an element with the given `id` is found in
+the document. This may be required for some browsers to start playing video.
+
 ### suppressWarning
 
 A value of `true` will suppress the internet explorer warning; any other value

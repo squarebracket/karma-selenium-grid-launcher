@@ -10,7 +10,7 @@ var safari = require('selenium-webdriver/safari');
 var until = wd.until;
 
 const ignoreArgs = ['base', 'gridUrl', 'suppressWarning', 'x-ua-compatible',
-  'heartbeatInterval'];
+  'heartbeatInterval', 'promptOn'];
 // default preferences shamelessly taken from karma-firefox-launcher
 const defaultFirefoxPrefs = {
   'browser.shell.checkDefaultBrowser': false,
@@ -142,6 +142,53 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
 
   self.name = name;
 
+  const heartbeatFunction = () => {
+    log.debug('hearbeat for ' + self.name);
+    self.browser.getTitle()
+      .catch((err) => {
+        heartbeatErrors++;
+        log.error('Caught error for browser ' + self.name + ' during ' +
+          'heartbeat: ' + err);
+        if (heartbeatErrors >= 5) {
+          log.error('Too many heartbeat errors, attempting to stop ' + self.name);
+          args.heartbeatInterval && clearInterval(heartbeat);
+          self.browser.quit()
+            .then(() => {
+              log.info('Killed ' + self.name + '.');
+              self._done();
+              self._onProcessExit(self.error ? -1 : 0, self.error);
+            })
+            .catch(() => {
+              log.info('Error stopping browser ' + self.name);
+              self._done();
+              self._onProcessExit(self.error ? -1 : 0, self.error);
+            });
+        }
+      });
+  };
+
+  const promptFunction = (elId) => {
+    return new Promise((resolve, reject) => {
+      var windowRef = self.browser.getWindowHandle();
+      self.browser.switchTo().frame(0);
+      var query = self.browser.wait(until.elementLocated(wd.By.id(elId)))
+        .then(() => {
+          log.debug('Trying to focus ' + self.name + ' with an alert...');
+          self.browser.switchTo().frame(null);
+          self.browser.switchTo().window(windowRef).then(() => {
+            self.browser.executeScript("alert('test')").then(() => {
+              self.browser.switchTo().alert().then((alert) => {
+                alert.dismiss();
+                self.browser.switchTo().window(windowRef);
+                resolve();
+              });
+            })
+          });
+        })
+        .catch((err) => reject('caught error in prompt function: ' + err));
+    });
+  };
+
   // This is done by passing the option on the url, in response the Karma server will
   // set the following meta in the page.
   //   <meta http-equiv="X-UA-Compatible" content="[VALUE]"/>
@@ -173,53 +220,24 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
       .build();
 
     var heartbeatErrors = 0;
-    var heartbeat = args.heartbeatInterval && setInterval(function() {
-      log.debug('hearbeat for ' + self.name);
-      self.browser.getTitle()
-        .catch((err) => {
-          heartbeatErrors++;
-          log.error('Caught error for browser ' + self.name + ' during ' +
-            'heartbeat: ' + err);
-          if (heartbeatErrors >= 5) {
-            log.error('Too many heartbeat errors, attempting to stop ' + self.name);
-            args.heartbeatInterval && clearInterval(heartbeat);
-            self.browser.quit()
-              .then(() => {
-                log.info('Killed ' + self.name + '.');
-                self._done();
-                self._onProcessExit(self.error ? -1 : 0, self.error);
-              })
-              .catch(() => {
-                log.info('Error stopping browser ' + self.name);
-                self._done();
-                self._onProcessExit(self.error ? -1 : 0, self.error);
-              });
-          }
-        });
-    }, args.heartbeatInterval);
+    var heartbeat;
 
     self.browser
         .get(url)
         .then(() => {
           log.debug(self.name + ' started');
-          if (args.browserName !== 'safari') {
-            var windowRef = self.browser.getWindowHandle();
-            self.browser.switchTo().frame(0);
-            var query = self.browser.wait(until.elementLocated(wd.By.id('player')))
-              .then(() => {
-                log.debug('Trying to focus ' + self.name + ' with an alert...');
-                self.browser.switchTo().frame(null);
-                self.browser.switchTo().window(windowRef).then(() => {
-                  self.browser.executeScript("alert('test')").then(() => {
-                    self.browser.switchTo().alert().then((alert) => {
-                      alert.dismiss();
-                      self.browser.switchTo().window(windowRef);
-                    });
-                  });
-                });
-              })
-              .catch(() => log.error('caught'));
+          let promise = Promise.resolve();
+          if (args.promptOn) {
+            promise = promise.then(() => promptFunction(args.promptOn));
           }
+          if (args.heartbeatInterval) {
+            promise = promise.then(() => {
+              heartbeat = setInterval(heartbeatFunction, args.heartbeatInterval);
+              return Promise.resolve();
+            });
+          }
+          promise = promise.catch(err => log.error(args.browserName + ' caught err ' + err));
+          return promise;
         })
         .catch((err) => {
           log.error(self.name + ' was unable to start: ' + err);
