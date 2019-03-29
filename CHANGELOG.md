@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 - `promptOn` launcher option
 - `delayLaunch` launcher option
+- `windowGeometry` launcher option
 
 ### Changed
 - Make things more generic and promisified and generally better

@@ -10,7 +10,7 @@ var safari = require('selenium-webdriver/safari');
 var until = wd.until;
 
 const ignoreArgs = ['base', 'gridUrl', 'suppressWarning', 'x-ua-compatible',
-  'heartbeatInterval', 'promptOn', 'delayLaunch'];
+  'heartbeatInterval', 'promptOn', 'delayLaunch', 'windowGeometry'];
 // default preferences shamelessly taken from karma-firefox-launcher
 const defaultFirefoxPrefs = {
   'browser.shell.checkDefaultBrowser': false,
@@ -234,6 +234,9 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
           .then(() => {
             log.debug(self.name + ' started');
             let promise = Promise.resolve();
+            if (args.windowGeometry) {
+              promise = promise.then(() => self.browser.manage().window().setRect(args.windowGeometry));
+            }
             if (args.promptOn) {
               promise = promise.then(() => promptFunction(args.promptOn));
             }

@@ -126,6 +126,12 @@ the document. This may be required for some browsers to start playing video.
 A value of `true` will suppress the internet explorer warning; any other value
 will cause the warning to be displayed.
 
+### windowGeometry
+
+Object to use for setting the geometry of the window. If any of the keys
+`width`, `height`, `x`, or `y` are present in the object, they will be used to
+modify just that aspect of the window geometry. Any other keys will be ignored.
+
 ### x-ua-compatible
 
 The value to use for an `X-UA-Compatible` `meta` tag. If not provided, Karma
