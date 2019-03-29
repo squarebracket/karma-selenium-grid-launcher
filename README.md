@@ -82,6 +82,12 @@ This is obviously only used by Karma to tell it from which base to extend, but
 it's included here to make it clear that `base` will not be passed along as a
 capability.
 
+### delayLaunch
+
+Time in ms to wait before launching a browser. Use this when a browser must
+end up as the foreground window for tests to pass, such as testing video
+playback on Safari.
+
 ### extensions
 
 Array of extension paths that should be installed on the remote browser. Note

@@ -10,7 +10,7 @@ var safari = require('selenium-webdriver/safari');
 var until = wd.until;
 
 const ignoreArgs = ['base', 'gridUrl', 'suppressWarning', 'x-ua-compatible',
-  'heartbeatInterval', 'promptOn'];
+  'heartbeatInterval', 'promptOn', 'delayLaunch'];
 // default preferences shamelessly taken from karma-firefox-launcher
 const defaultFirefoxPrefs = {
   'browser.shell.checkDefaultBrowser': false,
@@ -209,58 +209,66 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
     log.debug('Grid URL: ' + gridUrl);
     log.debug('Browser capabilities: ' + JSON.stringify(capabilities));
 
-    self.browser = new wd.Builder()
-      .setChromeOptions(options[wd.Browser.CHROME])
-      .setEdgeOptions(options[wd.Browser.EDGE])
-      .setFirefoxOptions(options[wd.Browser.FIREFOX])
-      .setIeOptions(options[wd.Browser.IE])
-      .setSafariOptions(options[wd.Browser.SAFARI])
-      .usingServer(gridUrl)
-      .withCapabilities(capabilities)
-      .build();
+    let delayTime = 0;
+    if (args.delayLaunch) {
+      log.debug('Delaying launch of ' + args.browserName + ' for ' + args.delayLaunch + 'ms');
+      delayTime = args.delayLaunch;
+    }
 
-    var heartbeatErrors = 0;
-    var heartbeat;
+    setTimeout(() => {
+      self.browser = new wd.Builder()
+        .setChromeOptions(options[wd.Browser.CHROME])
+        .setEdgeOptions(options[wd.Browser.EDGE])
+        .setFirefoxOptions(options[wd.Browser.FIREFOX])
+        .setIeOptions(options[wd.Browser.IE])
+        .setSafariOptions(options[wd.Browser.SAFARI])
+        .usingServer(gridUrl)
+        .withCapabilities(capabilities)
+        .build();
 
-    self.browser
-        .get(url)
-        .then(() => {
-          log.debug(self.name + ' started');
-          let promise = Promise.resolve();
-          if (args.promptOn) {
-            promise = promise.then(() => promptFunction(args.promptOn));
-          }
-          if (args.heartbeatInterval) {
-            promise = promise.then(() => {
-              heartbeat = setInterval(heartbeatFunction, args.heartbeatInterval);
-              return Promise.resolve();
-            });
-          }
-          promise = promise.catch(err => log.error(args.browserName + ' caught err ' + err));
-          return promise;
-        })
-        .catch((err) => {
-          log.error(self.name + ' was unable to start: ' + err);
-          self._done('failure');
-          self._onProcessExit(self.error ? -1 : 0, self.error);
-        });
+      var heartbeatErrors = 0;
+      var heartbeat;
 
-    self._process = {
-      kill: function() {
-        heartbeat && clearInterval(heartbeat);
-        self.browser.quit()
+      self.browser
+          .get(url)
           .then(() => {
-            log.info('Killed ' + self.name + '.');
-            self._done();
-            self._onProcessExit(self.error ? -1 : 0, self.error);
+            log.debug(self.name + ' started');
+            let promise = Promise.resolve();
+            if (args.promptOn) {
+              promise = promise.then(() => promptFunction(args.promptOn));
+            }
+            if (args.heartbeatInterval) {
+              promise = promise.then(() => {
+                heartbeat = setInterval(heartbeatFunction, args.heartbeatInterval);
+                return Promise.resolve();
+              });
+            }
+            promise = promise.catch(err => log.error(args.browserName + ' caught err ' + err));
+            return promise;
           })
-          .catch(() => {
-            log.info('Error stopping browser ' + self.name);
-            self._done();
+          .catch((err) => {
+            log.error(self.name + ' was unable to start: ' + err);
+            self._done('failure');
             self._onProcessExit(self.error ? -1 : 0, self.error);
           });
-      }
-    };
+
+      self._process = {
+        kill: function() {
+          heartbeat && clearInterval(heartbeat);
+          self.browser.quit()
+            .then(() => {
+              log.info('Killed ' + self.name + '.');
+              self._done();
+              self._onProcessExit(self.error ? -1 : 0, self.error);
+            })
+            .catch(() => {
+              log.info('Error stopping browser ' + self.name);
+              self._done();
+              self._onProcessExit(self.error ? -1 : 0, self.error);
+            });
+        }
+      };
+    }, delayTime);
   };
 
   // We can't really force browser to quit so just avoid warning about SIGKILL
