@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## Unreleased
+### Added
+- `closeBeforeQuit` launcher option
+- `resetBeforeQuit` launcher option
+- `Waiting for <browser> to quit...` message
+- Killing Tests Prematurely section to README
+- Browser Quirks and Workarounds section to README
+
+### Changed
+- Deprecated `promptOn` launcher option
+- Major code refactor
+
+### Fixed
+- Quitting while launching browsers should now be handled properly
+- Reliability is generally better
+
 ## [0.2.0] - 2019-03-29
 ### Added
 - `promptOn` launcher option

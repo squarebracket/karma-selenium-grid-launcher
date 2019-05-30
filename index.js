@@ -9,6 +9,9 @@ var ie = require('selenium-webdriver/ie');
 var safari = require('selenium-webdriver/safari');
 var until = wd.until;
 
+const CREATING_SESSION = 'CREATING_SESSION';
+const CREATED_SESSION = 'CREATED_SESSION';
+const WAITING = 'WAITING';
 const ignoreArgs = ['base', 'gridUrl', 'suppressWarning', 'x-ua-compatible',
   'heartbeatInterval', 'promptOn', 'delayLaunch', 'windowGeometry'];
 // default preferences shamelessly taken from karma-firefox-launcher
@@ -40,7 +43,8 @@ const defaultIeOptions = {
   browserAttachTimeout: 30000,
 };
 
-var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
+var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
+    captureTimeoutLauncherDecorator, retryLauncherDecorator) {
   if (!args.browserName) {
     throw new Error('browserName is required!');
   }
@@ -138,9 +142,15 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
 
   });
 
-  baseBrowserDecorator(this);
+  baseLauncherDecorator(this);
+  captureTimeoutLauncherDecorator(this);
+  retryLauncherDecorator(this);
 
   self.name = name;
+  self.browser = null;
+
+  var heartbeatErrors = 0;
+  var heartbeat;
 
   const heartbeatFunction = () => {
     log.debug('hearbeat for ' + self.name);
@@ -149,43 +159,48 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
         heartbeatErrors++;
         log.error('Caught error for browser ' + self.name + ' during ' +
           'heartbeat: ' + err);
+        if (err.name !== 'NoSuchSessionError') {
+          log.error(err.stack);
+        }
         if (heartbeatErrors >= 5) {
           log.error('Too many heartbeat errors, attempting to stop ' + self.name);
           args.heartbeatInterval && clearInterval(heartbeat);
-          self.browser.quit()
-            .then(() => {
-              log.info('Killed ' + self.name + '.');
-              self._done();
-              self._onProcessExit(self.error ? -1 : 0, self.error);
-            })
-            .catch(() => {
-              log.info('Error stopping browser ' + self.name);
-              self._done();
-              self._onProcessExit(self.error ? -1 : 0, self.error);
-            });
+          this.error = this.error || err;
+          this.kill();
         }
       });
   };
 
   const promptFunction = (elId) => {
     return new Promise((resolve, reject) => {
-      var windowRef = self.browser.getWindowHandle();
-      self.browser.switchTo().frame(0);
-      var query = self.browser.wait(until.elementLocated(wd.By.id(elId)))
-        .then(() => {
-          log.debug('Trying to focus ' + self.name + ' with an alert...');
-          self.browser.switchTo().frame(null);
-          self.browser.switchTo().window(windowRef).then(() => {
-            self.browser.executeScript("alert('test')").then(() => {
-              self.browser.switchTo().alert().then((alert) => {
-                alert.dismiss();
-                self.browser.switchTo().window(windowRef);
-                resolve();
-              });
-            })
-          });
-        })
-        .catch((err) => reject('caught error in prompt function: ' + err));
+      log.info('inside prompt function for ' + self.name);
+      // sometimes we get stuck inside the prompt function when quitting,
+      // so reject after a fixed amount of time just to unblock things
+      let bumpTimeout = setTimeout(() => reject('prompt function stuck'), 10000);
+      var windowRef;
+      self.browser.getWindowHandle().then((ref) => {
+        windowRef = ref;
+        return self.browser.switchTo().frame(0);
+      })
+      .then(() => self.browser.wait(until.elementLocated(wd.By.id(elId))))
+      .then(() => {
+        log.debug('Trying to focus ' + self.name + ' with an alert...');
+        return self.browser.switchTo().frame(null);
+      })
+      .then(() => self.browser.switchTo().window(windowRef))
+      .then(() => self.browser.executeScript("alert('test')"))
+      .then(() => self.browser.switchTo().alert())
+      .then((alert) => alert.dismiss())
+      .then(() => self.browser.switchTo().window(windowRef))
+      .then(() => {
+        resolve();
+        clearTimeout(bumpTimeout);
+      })
+      .catch((err) => {
+        log.error('caught in prompt for ' + self.name + ': ' + err);
+        clearTimeout(bumpTimeout);
+        reject(err);
+      });
     });
   };
 
@@ -198,7 +213,18 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
     }
   }
 
-  this._start = function (url) {
+  var loadTimeout = null;
+  var started;
+  var startPromise;
+
+  this.awaitingKill = () => {
+    return this.state === this.STATE_BEING_KILLED ||
+      this.state === this.STATE_BEING_FORCE_KILLED;
+  };
+
+  this.on('start', (url) => {
+    // reset kill state and error state so we don't auto-end the session immediately
+    this.error = null;
     var urlObj = urlparse(url, true);
 
     handleXUaCompatible(urlObj);
@@ -212,84 +238,206 @@ var SeleniumGridInstance = function (name, baseBrowserDecorator, args, logger) {
     let delayTime = 0;
     if (args.delayLaunch) {
       log.debug('Delaying launch of ' + args.browserName + ' for ' + args.delayLaunch + 'ms');
+      this.state = WAITING;
       delayTime = args.delayLaunch;
     }
 
-    setTimeout(() => {
-      self.browser = new wd.Builder()
-        .setChromeOptions(options[wd.Browser.CHROME])
-        .setEdgeOptions(options[wd.Browser.EDGE])
-        .setFirefoxOptions(options[wd.Browser.FIREFOX])
-        .setIeOptions(options[wd.Browser.IE])
-        .setSafariOptions(options[wd.Browser.SAFARI])
-        .usingServer(gridUrl)
-        .withCapabilities(capabilities)
-        .build();
+    loadTimeout = setTimeout(() => {
+      let errorStage;
+      log.debug('Launching ' + self.name);
+      this.state = CREATING_SESSION;
+      startPromise = new Promise((resolve, reject) => {
+        self.browser = new wd.Builder()
+          .setChromeOptions(options[wd.Browser.CHROME])
+          .setEdgeOptions(options[wd.Browser.EDGE])
+          .setFirefoxOptions(options[wd.Browser.FIREFOX])
+          .setIeOptions(options[wd.Browser.IE])
+          .setSafariOptions(options[wd.Browser.SAFARI])
+          .usingServer(gridUrl)
+          .withCapabilities(capabilities)
+          .build()
 
-      var heartbeatErrors = 0;
-      var heartbeat;
-
-      self.browser
-          .get(url)
-          .then(() => {
-            log.debug(self.name + ' started');
-            let promise = Promise.resolve();
-            if (args.windowGeometry) {
-              promise = promise.then(() => self.browser.manage().window().setRect(args.windowGeometry));
-            }
-            if (args.promptOn) {
-              promise = promise.then(() => promptFunction(args.promptOn));
-            }
-            if (args.heartbeatInterval) {
-              promise = promise.then(() => {
-                heartbeat = setInterval(heartbeatFunction, args.heartbeatInterval);
+        self.browser.then(() => {
+          log.debug(self.name + ' started');
+          resolve();
+          started = true;
+          this.state = CREATED_SESSION;
+          startPromise = startPromise.then(() => {
+            log.debug(self.name + ' resolved startPromise; navigating to karma page');
+          });
+          startPromise = startPromise.then(() => self.browser.get(url))
+            .then(() => {
+              log.debug(self.name + ' loaded karma; running applicable initialization');
+              return Promise.resolve();
+            })
+            .catch(err => {
+              errorStage = 'navigate';
+              return Promise.reject(err);
+            });
+          if (args.windowGeometry) {
+            startPromise = startPromise.then(() => {
+              log.debug(self.name + ' setting window geometry');
+              return self.browser.manage().window().setRect(args.windowGeometry).then(() => {
+                log.debug(self.name + ' set window geometry');
                 return Promise.resolve();
               });
-            }
-            promise = promise.catch(err => log.error(args.browserName + ' caught err ' + err));
-            return promise;
-          })
-          .catch((err) => {
-            log.error(self.name + ' was unable to start: ' + err);
-            self._done('failure');
-            self._onProcessExit(self.error ? -1 : 0, self.error);
-          });
-
-      self._process = {
-        kill: function() {
-          heartbeat && clearInterval(heartbeat);
-          self.browser.quit()
-            .then(() => {
-              log.info('Killed ' + self.name + '.');
-              self._done();
-              self._onProcessExit(self.error ? -1 : 0, self.error);
-            })
-            .catch(() => {
-              log.info('Error stopping browser ' + self.name);
-              self._done();
-              self._onProcessExit(self.error ? -1 : 0, self.error);
             });
-        }
-      };
+          }
+          if (args.promptOn) {
+            startPromise = startPromise.then(() => promptFunction(args.promptOn));
+          }
+          if (args.heartbeatInterval) {
+            // TODO: This should maybe be before the `get` call?
+            startPromise = startPromise.then(() => {
+              log.debug(self.name + ' setting heartbeat');
+              heartbeat = setInterval(heartbeatFunction, args.heartbeatInterval);
+              return Promise.resolve();
+            });
+          }
+          startPromise = startPromise.then(() => {
+            log.debug(self.name + ' initialized');
+            return Promise.resolve();
+          });
+          startPromise = startPromise.catch((err) => {
+            if (errorStage) {
+              // re-raise error caught during navigation
+              return Promise.reject(err);
+            } else {
+              errorStage = 'init';
+              return Promise.reject(err);
+            }
+          });
+          return startPromise;
+        })
+
+        .catch((err) => {
+          if (this.awaitingKill()) {
+            log.debug('ignoring error from ' + self.name + '; browser is shutting down');
+            reject(err);
+            return Promise.resolve();
+          } else {
+            started = false;
+            let message;
+            if (errorStage === 'init') {
+              message = self.name + ' encountered error during initialization: ' + err;
+            } else if (errorStage === 'navigate') {
+              message = self.name + ' encountered error navigating to karma page: ' + err;
+            } else {
+              message = self.name + ' was unable to create WebDriver session: ' + err;
+            }
+            log.error(message);
+            this.error = err;
+            reject(message);
+            self._done();
+          }
+        }); // self.browser.then
+
+      }); // startPromise
+
     }, delayTime);
+  });
+
+  let killInterval;
+  let killElapsed = 0;
+
+  this._stopSession = (done, startError) => {
+    var self = this;
+    let killPromise = Promise.resolve();
+
+    clearInterval(heartbeat);
+
+    if (!started) {
+      log.info(self.name + ' not started... Killed ' + self.name);
+      done();
+      return killPromise;
+    }
+
+    if (args.resetBeforeQuit) {
+      // load a blank page and wait before quitting. for browsers that don't
+      // close the window before quitting. noticed on real iOS 12 devices.
+      killPromise = killPromise.then(() => {
+        log.debug('Resetting ' + self.name + ' and pausing.');
+        return new Promise((resolve, reject) => {
+          self.browser.get('about:blank').then(() => setTimeout(() => {
+            log.debug('Reset ' + self.name + ' to about:blank');
+            resolve();
+          }, 10000));
+        });
+      });
+    }
+
+    if (args.closeBeforeQuit) {
+      // explicitly call browser.close(), which should be unnecessary according
+      // to webdriver. noticed on real iOS 10 devices.
+      killPromise = killPromise.then(() => {
+        log.debug('Closing browser window for ' + self.name + '.');
+        return self.browser.close().then(() => {
+          log.debug('Closed browser window for ' + self.name);
+          this.state = 'CLOSED';
+          return Promise.resolve();
+        });
+      });
+    }
+
+    killPromise = killPromise.then(() => {
+      log.debug('Quitting WebDriver for ' + self.name + '.');
+      return self.browser.quit()
+        .then(() => {
+          log.info('Killed ' + self.name + '.');
+          done();
+          return Promise.resolve();
+        });
+    });
+
+    killPromise = killPromise.catch((err) => {
+      if (err.name !== 'NoSuchSessionError' && err !== startError) {
+        // ignore NoSuchSessionErrors when killing
+        log.error('Error stopping browser ' + self.name + ': ' + err.toString());
+      }
+      done();
+      return Promise.resolve();
+    });
+
+    return killPromise;
   };
 
-  // We can't really force browser to quit so just avoid warning about SIGKILL
-  this._onKillTimeout = function(){};
+  this.on('kill', (done) => {
+    var self = this;
+    log.info('Trying to kill ' + self.name);
+    const end = () => {
+      self._done();
+      if (done) {
+        done();
+      }
+    };
+    const stopSession = (err) => {
+      return new Promise((startPromiseResolve, startPromiseReject) => {
+        this._stopSession(end, err).then(() => {
+          clearInterval(killInterval);
+          resolve('shutting down');
+          startPromiseReject('shutting down');
+        });
+      });
+    };
+
+    if (!self.browser) {
+        log.info('Browser ' + self.name + ' has not yet launched.');
+        loadTimeout && clearTimeout(loadTimeout);
+        end();
+      return Promise.resolve();
+    }
+
+    killInterval = setInterval(() => {
+      killElapsed += 10;
+      log.info('Waiting for ' + self.name + ' to quit... (' + killElapsed + 's)');
+    }, 10000);
+
+    return new Promise((resolve, reject) => {
+      startPromise = startPromise.then(stopSession, stopSession);
+    });
+  });
+
 };
-
-SeleniumGridInstance.prototype = {
-  name: 'SeleniumGrid',
-
-  DEFAULT_CMD: {
-    linux: undefined,
-    darwin: undefined,
-    win32: undefined
-  },
-  ENV_CMD: 'SeleniumGrid_BIN'
-};
-
-SeleniumGridInstance.$inject = ['name', 'baseBrowserDecorator', 'args', 'logger'];
 
 // PUBLISH DI MODULE
 module.exports = {

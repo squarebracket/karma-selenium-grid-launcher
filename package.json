@@ -4,7 +4,8 @@
   "description": "Launcher for Remote WebDriver instances on a Selenium Grid; forked from karma-webdriver-launcher.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\""
+    "test": "echo \"Error: no test specified\"",
+    "docs": "doctoc --notitle --github README.md"
   },
   "repository": {
     "type": "git",
@@ -38,6 +39,9 @@
   ],
   "dependencies": {
     "selenium-webdriver": "^4.0.0-alpha.1"
+  },
+  "devDependencies": {
+    "doctoc": "^1.4.0"
   },
   "license": "MIT"
 }
