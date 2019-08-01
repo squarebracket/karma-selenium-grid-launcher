@@ -414,7 +414,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
       return new Promise((startPromiseResolve, startPromiseReject) => {
         this._stopSession(end, err).then(() => {
           clearInterval(killInterval);
-          resolve('shutting down');
+          startPromiseResolve('shutting down');
           startPromiseReject('shutting down');
         });
       });
