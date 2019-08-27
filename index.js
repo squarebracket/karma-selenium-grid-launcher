@@ -410,15 +410,6 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
         done();
       }
     };
-    const stopSession = (err) => {
-      return new Promise((startPromiseResolve, startPromiseReject) => {
-        this._stopSession(end, err).then(() => {
-          clearInterval(killInterval);
-          resolve('shutting down');
-          startPromiseReject('shutting down');
-        });
-      });
-    };
 
     if (!self.browser) {
         log.info('Browser ' + self.name + ' has not yet launched.');
@@ -433,6 +424,15 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
     }, 10000);
 
     return new Promise((resolve, reject) => {
+      const stopSession = (err) => {
+        return new Promise((startPromiseResolve, startPromiseReject) => {
+          this._stopSession(end, err).then(() => {
+            clearInterval(killInterval);
+            resolve('shutting down');
+            startPromiseReject('shutting down');
+          });
+        });
+      };
       startPromise = startPromise.then(stopSession, stopSession);
     });
   });
