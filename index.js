@@ -410,7 +410,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
         done();
       }
     };
-    const stopSession = (err) => {
+    const stopSession = (resolve, err) => {
       return new Promise((startPromiseResolve, startPromiseReject) => {
         this._stopSession(end, err).then(() => {
           clearInterval(killInterval);
@@ -433,7 +433,10 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
     }, 10000);
 
     return new Promise((resolve, reject) => {
-      startPromise = startPromise.then(stopSession, stopSession);
+      startPromise = startPromise.then(
+        stopSession.bind(null, resolve),
+        stopSession.bind(null, resolve)
+      );
     });
   });
 
