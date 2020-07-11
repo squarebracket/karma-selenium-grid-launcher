@@ -299,6 +299,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
             return Promise.resolve();
           });
           startPromise = startPromise.catch((err) => {
+            console.error('i am an error here');
             if (errorStage) {
               // re-raise error caught during navigation
               return Promise.reject(err);
@@ -325,9 +326,10 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
             } else {
               message = self.name + ' was unable to create WebDriver session: ' + err;
             }
+            log.error('at 329');
             log.error(message);
             this.error = err;
-            reject(message);
+            //reject(message);
             self._done();
           }
         }); // self.browser.then
@@ -403,6 +405,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
 
   this.on('kill', (done) => {
     var self = this;
+    console.trace();
     log.info('Trying to kill ' + self.name);
     const end = () => {
       self._done();
@@ -429,7 +432,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
           this._stopSession(end, err).then(() => {
             clearInterval(killInterval);
             resolve('shutting down');
-            startPromiseReject('shutting down');
+            startPromiseResolve('shutting down');
           });
         });
       };
