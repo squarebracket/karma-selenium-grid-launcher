@@ -164,7 +164,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
         }
         if (heartbeatErrors >= 5) {
           log.error('Too many heartbeat errors, attempting to stop ' + self.name);
-          args.heartbeatInterval && clearInterval(heartbeat);
+          clearInterval(heartbeat);
           this.error = this.error || err;
           this.kill();
         }
@@ -223,8 +223,9 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
   };
 
   this.on('start', (url) => {
-    // reset kill state and error state so we don't auto-end the session immediately
+    // reset error state and heartbeat errors
     this.error = null;
+    heartbeatErrors = 0;
     var urlObj = urlparse(url, true);
 
     handleXUaCompatible(urlObj);
@@ -312,7 +313,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
 
         .catch((err) => {
           if (this.awaitingKill()) {
-            log.debug('ignoring error from ' + self.name + '; browser is shutting down');
+            log.info('ignoring error from ' + self.name + '; browser is shutting down');
             reject(err);
             return Promise.resolve();
           } else {
@@ -415,7 +416,7 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
         this._stopSession(end, err).then(() => {
           clearInterval(killInterval);
           resolve('shutting down');
-          startPromiseReject('shutting down');
+          startPromiseResolve('shutting down');
         });
       });
     };
@@ -427,12 +428,17 @@ var SeleniumGridInstance = function (name, args, logger, baseLauncherDecorator,
       return Promise.resolve();
     }
 
-    killInterval = setInterval(() => {
-      killElapsed += 10;
-      log.info('Waiting for ' + self.name + ' to quit... (' + killElapsed + 's)');
-    }, 10000);
-
     return new Promise((resolve, reject) => {
+      killInterval = setInterval(() => {
+        killElapsed += 10;
+        if (killElapsed < 600) {
+          log.info('Waiting for ' + self.name + ' to quit... (' + killElapsed + 's)');
+        } else {
+          log.error(self.name + ' took more than 600s to quit. Ending now');
+          end();
+          resolve('Shutting down');
+        }
+      }, 10000);
       startPromise = startPromise.then(stopSession, stopSession);
     });
   });
